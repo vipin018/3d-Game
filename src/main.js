@@ -3,8 +3,10 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GUI } from 'lil-gui';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
+import { Stats } from 'three/examples/jsm/libs/stats.module.js';
 
-let scene, renderer, camera, floor, orbitControls;
+let scene, renderer, camera, orbitControls, stats;
 let group, followGroup, model, skeleton, mixer, clock;
 
 let actions;
@@ -33,81 +35,98 @@ const controls = {
 init();
 
 function init() {
-	const container = document.getElementById( 'container' );
+    const container = document.getElementById('container');
 
-	camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 100 );
-	camera.position.set( 0, 2, - 5 );
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 2, -5);
 
-	clock = new THREE.Clock();
+    clock = new THREE.Clock();
 
-	scene = new THREE.Scene();
-	scene.background = new THREE.Color( 0x5e5d5d );
-	scene.fog = new THREE.Fog( 0x5e5d5d, 2, 20 );
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x5e5d5d);
 
-	group = new THREE.Group();
-	scene.add( group );
+    const environment = new RoomEnvironment();
+    scene.environment = environment;
 
-	followGroup = new THREE.Group();
-	scene.add( followGroup );
+    group = new THREE.Group();
+    scene.add(group);
 
-	const dirLight = new THREE.DirectionalLight( 0xffffff, 5 );
-	dirLight.position.set( - 2, 5, - 3 );
-	dirLight.castShadow = true;
-	const cam = dirLight.shadow.camera;
-	cam.top = cam.right = 2;
-	cam.bottom = cam.left = - 2;
-	cam.near = 3;
-	cam.far = 8;
-	dirLight.shadow.mapSize.set( 1024, 1024 );
-	followGroup.add( dirLight );
-	followGroup.add( dirLight.target );
+    followGroup = new THREE.Group();
+    scene.add(followGroup);
 
-	renderer = new THREE.WebGLRenderer( { antialias: true } );
-	renderer.setPixelRatio( window.devicePixelRatio );
-	renderer.setSize( window.innerWidth, window.innerHeight );
-	renderer.setAnimationLoop( animate );
-	renderer.toneMapping = THREE.ACESFilmicToneMapping;
-	renderer.toneMappingExposure = 0.5;
-	renderer.shadowMap.enabled = true;
-	renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-	container.appendChild( renderer.domElement );
+    // Lights
+    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambient);
 
-    const pmremGenerator = new THREE.PMREMGenerator( renderer );
-    scene.environment = pmremGenerator.fromScene( new RoomEnvironment( renderer ), 0.04 ).texture;
+    const dirLight = new THREE.DirectionalLight(0xffffff, 5);
+    dirLight.position.set(-2, 5, -3);
+    dirLight.castShadow = true;
+    const cam = dirLight.shadow.camera;
+    cam.top = cam.right = 2;
+    cam.bottom = cam.left = -2;
+    cam.near = 3;
+    cam.far = 8;
+    dirLight.shadow.mapSize.set(1024, 1024);
+    followGroup.add(dirLight);
+    followGroup.add(dirLight.target);
 
-	orbitControls = new OrbitControls( camera, renderer.domElement );
-	orbitControls.target.set( 0, 1, 0 );
-	orbitControls.enableDamping = true;
-	orbitControls.enablePan = false;
-	orbitControls.maxPolarAngle = PI90 - 0.05;
-	orbitControls.update();
+    const hemisphereLight = new THREE.HemisphereLight( 0xffffff, 0x000000, 1 );
+    scene.add( hemisphereLight );
 
-	// EVENTS
-	window.addEventListener( 'resize', onWindowResize );
-	document.addEventListener( 'keydown', onKeyDown );
-	document.addEventListener( 'keyup', onKeyUp );
+    const pointLight = new THREE.PointLight( 0xffffff, 1, 100 );
+    pointLight.position.set( 0, 5, 5 );
+    scene.add( pointLight );
 
-	// DEMO
+    const spotLight = new THREE.SpotLight( 0xffffff, 1, 0, Math.PI / 4, 1, 2 );
+    spotLight.position.set( 0, 5, 0 );
+    scene.add( spotLight );
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setAnimationLoop(animate);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.5;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    container.appendChild(renderer.domElement);
+    renderer.compile(scene, camera);
+
+    orbitControls = new OrbitControls(camera, renderer.domElement);
+    orbitControls.target.set(0, 1, 0);
+    orbitControls.enableDamping = true;
+    orbitControls.enablePan = false;
+    orbitControls.maxPolarAngle = PI90 - 0.05;
+    orbitControls.update();
+
+    // Reflector
+    const reflector = new Reflector( new THREE.PlaneGeometry( 50, 50 ), {
+        clipBias: 0.003,
+        textureWidth: window.innerWidth * window.devicePixelRatio,
+        textureHeight: window.innerHeight * window.devicePixelRatio,
+        color: 0x777777
+    } );
+    reflector.position.y = 0;
+    reflector.rotateX( - Math.PI / 2 );
+    scene.add( reflector );
+
+    stats = new Stats();
+    document.body.appendChild( stats.dom );
+
+    // EVENTS
+    window.addEventListener('resize', onWindowResize);
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
+
+    // DEMO
     loadModel();
-    addFloor();
-}
-
-function addFloor() {
-	const size = 50;
-
-	const mat = new THREE.MeshStandardMaterial( { color: 0x404040, roughness: 0.85 } );
-
-	const g = new THREE.PlaneGeometry( size, size );
-	g.rotateX( - PI90 );
-
-	floor = new THREE.Mesh( g, mat );
-	floor.receiveShadow = true;
-	scene.add( floor );
 }
 
 function loadModel() {
 	const loader = new GLTFLoader();
-	loader.load( 'public/Soldier.glb', function ( gltf ) {
+	const path = "models/Soldier.glb"
+	loader.load( path, function ( gltf ) {
 		model = gltf.scene;
 		group.add( model );
 		model.rotation.y = PI;
@@ -127,7 +146,6 @@ function loadModel() {
 		createPanel();
 
 		const animations = gltf.animations;
-        console.log(animations);
 		mixer = new THREE.AnimationMixer( model );
 
 		actions = {
@@ -181,10 +199,6 @@ function updateCharacter( delta ) {
 		group.quaternion.rotateTowards( rotate, controls.rotateSpeed );
 		orbitControls.target.copy( position ).add( { x: 0, y: 1, z: 0 } );
 		followGroup.position.copy( position );
-		const dx = ( position.x - floor.position.x );
-		const dz = ( position.z - floor.position.z );
-		if ( Math.abs( dx ) > controls.floorDecale ) floor.position.x += dx;
-		if ( Math.abs( dz ) > controls.floorDecale ) floor.position.z += dz;
 	}
 
 	if ( mixer ) mixer.update( delta );
@@ -200,6 +214,42 @@ function createPanel() {
 	panel.add( settings, 'show_skeleton' ).onChange( ( b ) => {
 		skeleton.visible = b;
 	} );
+    panel.add( renderer, 'toneMappingExposure', 0, 2, 0.01 );
+    panel.add( controls, 'runVelocity', 0, 10, 0.1 );
+    panel.add( controls, 'walkVelocity', 0, 10, 0.1 );
+    panel.add( controls, 'rotateSpeed', 0, 0.2, 0.01 );
+
+    const lightFolder = panel.addFolder('Lights');
+
+    const ambientLight = scene.getObjectByProperty('type', 'AmbientLight');
+    const ambientFolder = lightFolder.addFolder('Ambient Light');
+    ambientFolder.add(ambientLight, 'visible');
+    ambientFolder.add(ambientLight, 'intensity', 0, 5, 0.1);
+    ambientFolder.addColor(ambientLight, 'color');
+
+    const dirLight = scene.getObjectByProperty('type', 'DirectionalLight');
+    const dirFolder = lightFolder.addFolder('Directional Light');
+    dirFolder.add(dirLight, 'visible');
+    dirFolder.add(dirLight, 'intensity', 0, 10, 0.1);
+    dirFolder.addColor(dirLight, 'color');
+
+    const hemisphereLight = scene.getObjectByProperty('type', 'HemisphereLight');
+    const hemiFolder = lightFolder.addFolder('Hemisphere Light');
+    hemiFolder.add(hemisphereLight, 'visible');
+    hemiFolder.add(hemisphereLight, 'intensity', 0, 5, 0.1);
+    hemiFolder.addColor(hemisphereLight, 'color');
+
+    const pointLight = scene.getObjectByProperty('type', 'PointLight');
+    const pointFolder = lightFolder.addFolder('Point Light');
+    pointFolder.add(pointLight, 'visible');
+    pointFolder.add(pointLight, 'intensity', 0, 10, 0.1);
+    pointFolder.addColor(pointLight, 'color');
+
+    const spotLight = scene.getObjectByProperty('type', 'SpotLight');
+    const spotFolder = lightFolder.addFolder('Spot Light');
+    spotFolder.add(spotLight, 'visible');
+    spotFolder.add(spotLight, 'intensity', 0, 10, 0.1);
+    spotFolder.addColor(spotLight, 'color');
 }
 
 function setWeight( action, weight ) {
@@ -240,4 +290,5 @@ function animate() {
 	const delta = clock.getDelta();
 	updateCharacter( delta );
 	renderer.render( scene, camera );
+    stats.update();
 }
