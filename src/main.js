@@ -4,9 +4,9 @@ import { GUI } from 'lil-gui';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
-import { Stats } from 'three/examples/jsm/libs/stats.module.js';
+// import { Stats } from 'three/examples/jsm/libs/stats.module.js';
 
-let scene, renderer, camera, orbitControls, stats;
+let scene, renderer, camera, orbitControls;
 let group, followGroup, model, skeleton, mixer, clock;
 
 let actions;
@@ -111,8 +111,8 @@ function init() {
     reflector.rotateX( - Math.PI / 2 );
     scene.add( reflector );
 
-    stats = new Stats();
-    document.body.appendChild( stats.dom );
+    // stats = new Stats();
+    // document.body.appendChild( stats.dom );
 
     // EVENTS
     window.addEventListener('resize', onWindowResize);
@@ -290,5 +290,5 @@ function animate() {
 	const delta = clock.getDelta();
 	updateCharacter( delta );
 	renderer.render( scene, camera );
-    stats.update();
+    // stats.update();
 }
