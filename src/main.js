@@ -3,16 +3,16 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GUI } from 'lil-gui';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
-// import { Stats } from 'three/examples/jsm/libs/stats.module.js';
+import { FlyControls } from 'three/examples/jsm/controls/FlyControls.js';
 
-let scene, renderer, camera, orbitControls;
+let scene, renderer, camera, orbitControls, flyControls;
 let group, followGroup, model, skeleton, mixer, clock;
 
 let actions;
 
 const settings = {
 	show_skeleton: false,
+    control_mode: 'Orbit'
 };
 
 const PI = Math.PI;
@@ -37,7 +37,7 @@ init();
 function init() {
     const container = document.getElementById('container');
 
-    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 2, -5);
 
     clock = new THREE.Clock();
@@ -70,16 +70,7 @@ function init() {
     followGroup.add(dirLight);
     followGroup.add(dirLight.target);
 
-    const hemisphereLight = new THREE.HemisphereLight( 0xffffff, 0x000000, 1 );
-    scene.add( hemisphereLight );
 
-    const pointLight = new THREE.PointLight( 0xffffff, 1, 100 );
-    pointLight.position.set( 0, 5, 5 );
-    scene.add( pointLight );
-
-    const spotLight = new THREE.SpotLight( 0xffffff, 1, 0, Math.PI / 4, 1, 2 );
-    spotLight.position.set( 0, 5, 0 );
-    scene.add( spotLight );
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
@@ -100,19 +91,34 @@ function init() {
     orbitControls.maxPolarAngle = PI90 - 0.05;
     orbitControls.update();
 
-    // Reflector
-    const reflector = new Reflector( new THREE.PlaneGeometry( 50, 50 ), {
-        clipBias: 0.003,
-        textureWidth: window.innerWidth * window.devicePixelRatio,
-        textureHeight: window.innerHeight * window.devicePixelRatio,
-        color: 0x777777
-    } );
-    reflector.position.y = 0;
-    reflector.rotateX( - Math.PI / 2 );
-    scene.add( reflector );
+    flyControls = new FlyControls(camera, renderer.domElement);
+    flyControls.enabled = false;
 
-    // stats = new Stats();
-    // document.body.appendChild( stats.dom );
+    const textureLoader = new THREE.TextureLoader();
+    const diffuseMap = textureLoader.load('textures/aerial_rocks_02_diff_1k.jpg');
+    const normalMap = textureLoader.load('textures/aerial_rocks_02_nor_gl_1k.jpg');
+    const roughnessMap = textureLoader.load('textures/aerial_rocks_02_rough_1k.jpg');
+    const aoMap = textureLoader.load('textures/aerial_rocks_02_arm_1k.jpg');
+    const displacementMap = textureLoader.load('textures/aerial_rocks_02_rough_1k.jpg');
+
+    const floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(50, 50, 100, 100),
+        new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            map: diffuseMap,
+            normalMap: normalMap,
+            roughnessMap: roughnessMap,
+            aoMap: aoMap,
+            displacementMap: displacementMap,
+        })
+    );
+    floor.geometry.attributes.uv2 = floor.geometry.attributes.uv;
+    floor.name = 'floor';
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    addRandomGeometries();
 
     // EVENTS
     window.addEventListener('resize', onWindowResize);
@@ -161,11 +167,16 @@ function loadModel() {
 		}
 
 		actions.Idle.play();
-		animate();
 	} );
 }
 
 function updateCharacter( delta ) {
+    if (flyControls.enabled) {
+        if (mixer) mixer.update(delta);
+        orbitControls.update();
+        return;
+    }
+
 	const fade = controls.fadeDuration;
 	const key = controls.key;
 	const up = controls.up;
@@ -174,7 +185,7 @@ function updateCharacter( delta ) {
 	const position = controls.position;
 	const azimuth = orbitControls.getAzimuthalAngle();
 
-	const active = key[ 0 ] === 0 && key[ 1 ] === 0 ? false : true;
+	const active = key[ 0 ] !== 0 || key[ 1 ] !== 0;
 	const play = active ? ( key[ 2 ] ? 'Run' : 'Walk' ) : 'Idle';
 
 	if ( controls.current != play ) {
@@ -211,13 +222,28 @@ function unwrapRad( r ) {
 
 function createPanel() {
 	const panel = new GUI( { width: 310 } );
-	panel.add( settings, 'show_skeleton' ).onChange( ( b ) => {
-		skeleton.visible = b;
+
+    const generalFolder = panel.addFolder('General');
+    generalFolder.add(settings, 'control_mode', ['Orbit', 'Fly']).onChange(mode => {
+        if (mode === 'Orbit') {
+            orbitControls.enabled = true;
+            flyControls.enabled = false;
+            if(model) model.visible = true;
+        } else {
+            orbitControls.enabled = false;
+            flyControls.enabled = true;
+            if(model) model.visible = false;
+        }
+    });
+	generalFolder.add( settings, 'show_skeleton' ).onChange( ( b ) => {
+		if(skeleton) skeleton.visible = b;
 	} );
-    panel.add( renderer, 'toneMappingExposure', 0, 2, 0.01 );
-    panel.add( controls, 'runVelocity', 0, 10, 0.1 );
-    panel.add( controls, 'walkVelocity', 0, 10, 0.1 );
-    panel.add( controls, 'rotateSpeed', 0, 0.2, 0.01 );
+    generalFolder.add( renderer, 'toneMappingExposure', 0, 2, 0.01 );
+
+    const characterFolder = panel.addFolder('Character');
+    characterFolder.add( controls, 'runVelocity', 0, 10, 0.1 );
+    characterFolder.add( controls, 'walkVelocity', 0, 10, 0.1 );
+    characterFolder.add( controls, 'rotateSpeed', 0, 0.2, 0.01 );
 
     const lightFolder = panel.addFolder('Lights');
 
@@ -233,23 +259,34 @@ function createPanel() {
     dirFolder.add(dirLight, 'intensity', 0, 10, 0.1);
     dirFolder.addColor(dirLight, 'color');
 
-    const hemisphereLight = scene.getObjectByProperty('type', 'HemisphereLight');
-    const hemiFolder = lightFolder.addFolder('Hemisphere Light');
-    hemiFolder.add(hemisphereLight, 'visible');
-    hemiFolder.add(hemisphereLight, 'intensity', 0, 5, 0.1);
-    hemiFolder.addColor(hemisphereLight, 'color');
+    const floor = scene.getObjectByName('floor');
+    const floorFolder = panel.addFolder('Floor');
+    floorFolder.add(floor, 'visible');
+    floorFolder.addColor(floor.material, 'color');
+    floorFolder.add(floor.material, 'metalness', 0, 1, 0.1);
+    floorFolder.add(floor.material, 'roughness', 0, 1, 0.1);
+    floorFolder.add(floor.material, 'wireframe');
+    floorFolder.add(floor.material, 'displacementScale', 0, 1, 0.01);
+    floorFolder.add(floor.material, 'displacementBias', -1, 1, 0.01);
+}
 
-    const pointLight = scene.getObjectByProperty('type', 'PointLight');
-    const pointFolder = lightFolder.addFolder('Point Light');
-    pointFolder.add(pointLight, 'visible');
-    pointFolder.add(pointLight, 'intensity', 0, 10, 0.1);
-    pointFolder.addColor(pointLight, 'color');
+function addRandomGeometries() {
+    for (let i = 0; i < 20; i++) {
+        const geometry = new THREE.BoxGeometry(Math.random() * 1 + 0.2, Math.random() * 1 + 0.2, Math.random() * 1 + 0.2);
+        const material = new THREE.MeshStandardMaterial({
+            color: Math.random() * 0xffffff,
+            metalness: Math.random(),
+            roughness: Math.random()
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        const yPos = geometry.parameters.height / 2;
+        mesh.position.set(Math.random() * 40 - 20, yPos, Math.random() * 40 - 20);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
 
-    const spotLight = scene.getObjectByProperty('type', 'SpotLight');
-    const spotFolder = lightFolder.addFolder('Spot Light');
-    spotFolder.add(spotLight, 'visible');
-    spotFolder.add(spotLight, 'intensity', 0, 10, 0.1);
-    spotFolder.addColor(spotLight, 'color');
+
+    }
 }
 
 function setWeight( action, weight ) {
@@ -289,6 +326,6 @@ function onWindowResize() {
 function animate() {
 	const delta = clock.getDelta();
 	updateCharacter( delta );
+    if (flyControls.enabled) flyControls.update(delta);
 	renderer.render( scene, camera );
-    // stats.update();
 }
