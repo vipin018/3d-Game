@@ -107,8 +107,8 @@ function init() {
         roughnessMap: roughnessMap,
         aoMap: aoMap,
         displacementMap: displacementMap,
-        displacementScale: 0.2, // Default value
-        displacementBias: 0 // Default value
+        displacementScale: 3.4, // Default value
+        displacementBias: -2 // Default value
     });
 
     const floor = new THREE.Mesh(
@@ -175,15 +175,15 @@ function loadModel() {
 
 function addRandomGeometries() {
     const textureLoader = new THREE.TextureLoader();
-    const boxDiffuseMap = textureLoader.load('textures/box/concrete_floor_02_diff_1k.jpg');
-    const boxNormalMap = textureLoader.load('textures/box/concrete_floor_02_nor_gl_1k.jpg');
-    const boxRoughnessMap = textureLoader.load('textures/box/concrete_floor_02_rough_1k.jpg');
-    const boxAoMap = textureLoader.load('textures/box/concrete_floor_02_arm_1k.jpg');
-    const boxDisplacementMap = textureLoader.load('textures/box/concrete_floor_02_disp_1k.jpg');
+    const boxDiffuseMap = textureLoader.load('textures/box/aerial_rocks_04_diff_1k.jpg');
+    const boxNormalMap = textureLoader.load('textures/box/aerial_rocks_04_nor_gl_1k.jpg');
+    const boxRoughnessMap = textureLoader.load('textures/box/aerial_rocks_04_rough_1k.jpg');
+    const boxAoMap = textureLoader.load('textures/box/aerial_rocks_04_arm_1k.jpg');
+    const boxDisplacementMap = textureLoader.load('textures/box/aerial_rocks_04_disp_1k.jpg');
 
-    for (let i = 0; i < 20; i++) {
-        const size = Math.random() * 1 + 0.2;
-        const geometry = new RoundedBoxGeometry(size, size, size, 10, 0.1);
+    for (let i = 0; i < 10; i++) {
+        const size = Math.random() * 1;
+        const geometry = new THREE.IcosahedronGeometry(size, 32); // Removed invalid third parameter; detail=32 is very high-poly (reduce if performance issues)
         const material = new THREE.MeshStandardMaterial({
             color: 0xffffff,
             map: boxDiffuseMap,
@@ -191,12 +191,12 @@ function addRandomGeometries() {
             roughnessMap: boxRoughnessMap,
             aoMap: boxAoMap,
             displacementMap: boxDisplacementMap,
-            displacementScale: 0.05, // Default value
-            displacementBias: 0 // Default value
+            displacementScale: 1.5, // Default value
+            displacementBias: 0.3 // Default value
         });
         const mesh = new THREE.Mesh(geometry, material);
         mesh.geometry.attributes.uv2 = mesh.geometry.attributes.uv; // Required for aoMap
-        const yPos = size / 2;
+        const yPos = size; // Corrected to rest on floor (icosahedron radius = size)
         mesh.position.set(Math.random() * 40 - 20, yPos, Math.random() * 40 - 20);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
@@ -256,7 +256,9 @@ function unwrapRad(r) {
 }
 
 function createPanel() {
-    const panel = new GUI({ width: 310 });
+    const panel = new GUI({ 
+        width: 300,
+     });
 
     const generalFolder = panel.addFolder('General');
     generalFolder.add(settings, 'control_mode', ['Orbit', 'Fly']).onChange(mode => {
@@ -303,86 +305,49 @@ function createPanel() {
     floorFolder.add(floor.material, 'wireframe');
     floorFolder.add(floor.material, 'displacementScale', 0, 5, 0.01);
     floorFolder.add(floor.material, 'displacementBias', -2, 2, 0.01);
-    // Texture controls for floor
-    const floorTextures = {
-        diffuseMap: true,
-        normalMap: true,
-        roughnessMap: true,
-        aoMap: true,
-        displacementMap: true
-    };
-    const floorTextureFolder = floorFolder.addFolder('Textures');
-    floorTextureFolder.add(floorTextures, 'diffuseMap').name('Diffuse Map').onChange(v => {
-        floor.material.map = v ? textureLoader.load('textures/floor/aerial_rocks_02_diff_1k.jpg') : null;
-        floor.material.needsUpdate = true;
-    });
-    floorTextureFolder.add(floorTextures, 'normalMap').name('Normal Map').onChange(v => {
-        floor.material.normalMap = v ? textureLoader.load('textures/floor/aerial_rocks_02_nor_gl_1k.jpg') : null;
-        floor.material.needsUpdate = true;
-    });
-    floorTextureFolder.add(floorTextures, 'roughnessMap').name('Roughness Map').onChange(v => {
-        floor.material.roughnessMap = v ? textureLoader.load('textures/floor/aerial_rocks_02_rough_1k.jpg') : null;
-        floor.material.needsUpdate = true;
-    });
-    floorTextureFolder.add(floorTextures, 'aoMap').name('AO Map').onChange(v => {
-        floor.material.aoMap = v ? textureLoader.load('textures/floor/aerial_rocks_02_arm_1k.jpg') : null;
-        floor.material.needsUpdate = true;
-    });
-    floorTextureFolder.add(floorTextures, 'displacementMap').name('Displacement Map').onChange(v => {
-        floor.material.displacementMap = v ? textureLoader.load('textures/floor/aerial_rocks_02_disp_1k.jpg') : null;
-        floor.material.needsUpdate = true;
-    });
 
-    // Box material controls (apply to all boxes)
-    const boxMaterial = scene.getObjectByName('box0').material; // Use first box's material for GUI
+    // Box material controls (apply to all boxes/icosahedrons)
     const boxFolder = panel.addFolder('Boxes');
-    boxFolder.addColor(boxMaterial, 'color');
-    boxFolder.add(boxMaterial, 'metalness', 0, 1, 0.1);
-    boxFolder.add(boxMaterial, 'roughness', 0, 1, 0.1);
-    boxFolder.add(boxMaterial, 'wireframe');
-    boxFolder.add(boxMaterial, 'displacementScale', 0, 5, 0.01);
-    boxFolder.add(boxMaterial, 'displacementBias', -2, 2, 0.01);
-    // Texture controls for boxes
-    const boxTextures = {
-        diffuseMap: true,
-        normalMap: true,
-        roughnessMap: true,
-        aoMap: true,
-        displacementMap: true
-    };
-    const boxTextureFolder = boxFolder.addFolder('Textures');
-    boxTextureFolder.add(boxTextures, 'diffuseMap').name('Diffuse Map').onChange(v => {
-        for (let i = 0; i < 20; i++) {
+    const boxMaterial = scene.getObjectByName('box0').material; // Use first box's material for GUI reference
+    boxFolder.addColor({ color: boxMaterial.color.getHex() }, 'color').onChange(v => {
+        for (let i = 0; i < 10; i++) {
             const box = scene.getObjectByName('box' + i);
-            box.material.map = v ? textureLoader.load('textures/box/concrete_floor_02_diff_1k.jpg') : null;
+            box.material.color.set(v);
             box.material.needsUpdate = true;
         }
     });
-    boxTextureFolder.add(boxTextures, 'normalMap').name('Normal Map').onChange(v => {
-        for (let i = 0; i < 20; i++) {
+    boxFolder.add({ metalness: boxMaterial.metalness }, 'metalness', 0, 1, 0.1).onChange(v => {
+        for (let i = 0; i < 10; i++) {
             const box = scene.getObjectByName('box' + i);
-            box.material.normalMap = v ? textureLoader.load('textures/box/concrete_floor_02_nor_gl_1k.jpg') : null;
+            box.material.metalness = v;
             box.material.needsUpdate = true;
         }
     });
-    boxTextureFolder.add(boxTextures, 'roughnessMap').name('Roughness Map').onChange(v => {
-        for (let i = 0; i < 20; i++) {
+    boxFolder.add({ roughness: boxMaterial.roughness }, 'roughness', 0, 1, 0.1).onChange(v => {
+        for (let i = 0; i < 10; i++) {
             const box = scene.getObjectByName('box' + i);
-            box.material.roughnessMap = v ? textureLoader.load('textures/box/concrete_floor_02_rough_1k.jpg') : null;
+            box.material.roughness = v;
             box.material.needsUpdate = true;
         }
     });
-    boxTextureFolder.add(boxTextures, 'aoMap').name('AO Map').onChange(v => {
-        for (let i = 0; i < 20; i++) {
+    boxFolder.add({ wireframe: boxMaterial.wireframe }, 'wireframe').onChange(v => {
+        for (let i = 0; i < 10; i++) {
             const box = scene.getObjectByName('box' + i);
-            box.material.aoMap = v ? textureLoader.load('textures/box/concrete_floor_02_arm_1k.jpg') : null;
+            box.material.wireframe = v;
             box.material.needsUpdate = true;
         }
     });
-    boxTextureFolder.add(boxTextures, 'displacementMap').name('Displacement Map').onChange(v => {
-        for (let i = 0; i < 20; i++) {
+    boxFolder.add({ displacementScale: boxMaterial.displacementScale }, 'displacementScale', 0, 5, 0.01).onChange(v => {
+        for (let i = 0; i < 10; i++) {
             const box = scene.getObjectByName('box' + i);
-            box.material.displacementMap = v ? textureLoader.load('textures/box/concrete_floor_02_disp_1k.jpg') : null;
+            box.material.displacementScale = v;
+            box.material.needsUpdate = true;
+        }
+    });
+    boxFolder.add({ displacementBias: boxMaterial.displacementBias }, 'displacementBias', -2, 2, 0.01).onChange(v => {
+        for (let i = 0; i < 10; i++) {
+            const box = scene.getObjectByName('box' + i);
+            box.material.displacementBias = v;
             box.material.needsUpdate = true;
         }
     });
