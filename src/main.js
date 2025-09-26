@@ -1,10 +1,13 @@
 import * as THREE from 'three';
+
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
 import { GUI } from 'lil-gui';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 
-let scene, renderer, camera, orbitControls;
+let scene, renderer, camera;
 let group, followGroup, model, skeleton, mixer, clock;
 let floor; // Global reference to floor mesh for texture updates
 let fogUniforms, fogPlane, postProcessing = {};
@@ -13,13 +16,13 @@ let actions;
 
 const settings = {
     show_skeleton: false,
-    tone_mapping: 'Cineon',
+    tone_mapping: 'ACESFilmic',
     fog_density: 0.03,
-    fog_color: '#5e5d5d',
+    fog_color: '#212631',
     fog_height: 15,
     fog_noise: true,
     fog_speed: 0.5,
-    enable_postfx: true,
+    enable_postfx: false,
     pixel_ratio: 2.0,
     scanlines: true,
     film_grain: true,
@@ -58,7 +61,6 @@ function init() {
     const container = document.getElementById('container');
 
     camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 2, -5);
 
     clock = new THREE.Clock();
 
@@ -70,10 +72,10 @@ function init() {
 
     // Load HDRI
     const rgbeLoader = new RGBELoader();
-    rgbeLoader.load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/qwantani_moon_noon_puresky_1k.hdr', function (texture) {
+    rgbeLoader.load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/autumn_field_puresky_1k.hdr', function (texture) {
         texture.mapping = THREE.EquirectangularReflectionMapping;
         scene.environment = texture;
-        scene.background = texture;
+        // scene.background = texture;
     });
 
     group = new THREE.Group();
@@ -82,9 +84,13 @@ function init() {
     followGroup = new THREE.Group();
     scene.add(followGroup);
 
+    // ambient light
+    const ambLight = new THREE.AmbientLight(0xffffff, 1);
+    scene.add(ambLight);
+
     // Directional Light (only light source)
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-    dirLight.position.set(-2, 5, -3);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 10);
+    dirLight.position.set(-2, 5, 3);
     dirLight.castShadow = true;
     const cam = dirLight.shadow.camera;
     cam.top = cam.right = 2;
@@ -100,19 +106,14 @@ function init() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setAnimationLoop(animate);
     renderer.toneMapping = toneMappingOptions[settings.tone_mapping];
-    renderer.toneMappingExposure = 0.5;
+    renderer.toneMappingExposure = 0.05;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputEncoding = THREE.sRGBEncoding;
     container.appendChild(renderer.domElement);
     renderer.compile(scene, camera);
 
-    orbitControls = new OrbitControls(camera, renderer.domElement);
-    orbitControls.target.set(0, 1, 0);
-    orbitControls.enableDamping = true;
-    orbitControls.enablePan = false;
-    orbitControls.maxPolarAngle = PI90 - 0.05;
-    orbitControls.update();
+    
 
     // Initialize post-processing
     initPostProcessing();
@@ -138,7 +139,7 @@ function init() {
 
         model.traverse(function (object) {
             if (object.isMesh) {
-                object.castShadow = true;
+                object.castShadow = false;
                 object.receiveShadow = true;
             }
         });
@@ -337,7 +338,10 @@ function initPostProcessing() {
 }
 
 function loadModel() {
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('three/examples/jsm/libs/draco/');
     const loader = new GLTFLoader();
+    loader.setDRACOLoader(dracoLoader);
     const path = "models/Soldier.glb";
     loader.load(path, function (gltf) {
         model = gltf.scene;
@@ -385,7 +389,7 @@ function updateCharacter(delta) {
     const ease = controls.ease;
     const rotate = controls.rotate;
     const position = controls.position;
-    const azimuth = orbitControls.getAzimuthalAngle();
+    const azimuth = 0;
 
     const active = key[0] !== 0 || key[1] !== 0;
     const play = active ? (key[2] ? 'Run' : 'Walk') : 'Idle';
@@ -410,12 +414,14 @@ function updateCharacter(delta) {
         // camera.position.add(ease);
         group.position.copy(position);
         group.quaternion.rotateTowards(rotate, controls.rotateSpeed);
-        orbitControls.target.copy(position).add({ x: 0, y: 1, z: 0 });
         followGroup.position.copy(position);
+
+        const offset = new THREE.Vector3(0, 2.3, -7);
+        camera.position.copy(group.position).add(offset);
+        camera.lookAt(group.position);
     }
 
     if (mixer) mixer.update(delta);
-    orbitControls.update();
 }
 
 function unwrapRad(r) {
@@ -487,10 +493,10 @@ function setWeight(action, weight) {
 function onKeyDown(event) {
     const key = controls.key;
     switch (event.code) {
-        case 'ArrowUp': case 'KeyW': key[0] = -1; break;
-        case 'ArrowDown': case 'KeyS': key[0] = 1; break;
-        case 'ArrowLeft': case 'KeyA': key[1] = -1; break;
-        case 'ArrowRight': case 'KeyD': key[1] = 1; break;
+        case 'ArrowDown': case 'KeyS': key[0] = -1; break;
+        case 'ArrowUp': case 'KeyW': key[0] = 1; break;
+        case 'ArrowRight': case 'KeyD': key[1] = -1; break;
+        case 'ArrowLeft': case 'KeyA': key[1] = 1; break;
         case 'ShiftLeft': case 'ShiftRight': key[2] = 1; break;
     }
 }
@@ -498,10 +504,10 @@ function onKeyDown(event) {
 function onKeyUp(event) {
     const key = controls.key;
     switch (event.code) {
-        case 'ArrowUp': case 'KeyW': key[0] = key[0] < 0 ? 0 : key[0]; break;
-        case 'ArrowDown': case 'KeyS': key[0] = key[0] > 0 ? 0 : key[0]; break;
-        case 'ArrowLeft': case 'KeyA': key[1] = key[1] < 0 ? 0 : key[1]; break;
-        case 'ArrowRight': case 'KeyD': key[1] = key[1] > 0 ? 0 : key[1]; break;
+        case 'ArrowDown': case 'KeyS': key[0] = key[0] < 0 ? 0 : key[0]; break;
+        case 'ArrowUp': case 'KeyW': key[0] = key[0] > 0 ? 0 : key[0]; break;
+        case 'ArrowRight': case 'KeyD': key[1] = key[1] < 0 ? 0 : key[1]; break;
+        case 'ArrowLeft': case 'KeyA': key[1] = key[1] > 0 ? 0 : key[1]; break;
         case 'ShiftLeft': case 'ShiftRight': key[2] = 0; break;
     }
 }
