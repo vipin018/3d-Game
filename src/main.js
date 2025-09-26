@@ -52,28 +52,6 @@ const toneMappingOptions = {
     'ACESFilmic': THREE.ACESFilmicToneMapping
 };
 
-// Floor texture sets
-const floorTextureSets = {
-    'Asphalt': {
-        diffuse: 'textures/floor/asphalt_02_diff_1k.jpg',
-        normal: 'textures/floor/asphalt_02_nor_gl_1k.jpg',
-        roughness: 'textures/floor/asphalt_02_rough_1k.jpg',
-        ao: 'textures/floor/asphalt_02_arm_1k.jpg',
-        displacement: 'textures/floor/asphalt_02_disp_1k.jpg',
-        displacementScale: 0.54,
-        displacementBias: -0.35
-    },
-    'Concrete': {
-        diffuse: 'textures/floor/concrete_03_diff_1k.jpg',
-        normal: 'textures/floor/concrete_03_nor_gl_1k.jpg',
-        roughness: 'textures/floor/concrete_03_rough_1k.jpg',
-        ao: 'textures/floor/concrete_03_arm_1k.jpg',
-        displacement: 'textures/floor/concrete_03_disp_1k.jpg',
-        displacementScale: 0.3,
-        displacementBias: -0.2
-    }
-};
-
 init();
 
 function init() {
@@ -92,10 +70,10 @@ function init() {
 
     // Load HDRI
     const rgbeLoader = new RGBELoader();
-    rgbeLoader.load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/shanghai_bund_1k.hdr', function (texture) {
+    rgbeLoader.load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/qwantani_moon_noon_puresky_1k.hdr', function (texture) {
         texture.mapping = THREE.EquirectangularReflectionMapping;
         scene.environment = texture;
-        // scene.background = texture;
+        scene.background = texture;
     });
 
     group = new THREE.Group();
@@ -139,52 +117,10 @@ function init() {
     // Initialize post-processing
     initPostProcessing();
 
-    const textureLoader = new THREE.TextureLoader();
-    const textureSet = floorTextureSets['Asphalt']; // Fixed to Asphalt
-    const diffuseMap = textureLoader.load(textureSet.diffuse);
-    const normalMap = textureLoader.load(textureSet.normal);
-    const roughnessMap = textureLoader.load(textureSet.roughness);
-    const aoMap = textureLoader.load(textureSet.ao);
-    const displacementMap = textureLoader.load(textureSet.displacement);
-
-    // Apply fixed tiling
-    diffuseMap.repeat.set(10, 10); // Fixed tiling x and y to 10
-    normalMap.repeat.set(10, 10);
-    roughnessMap.repeat.set(10, 10);
-    aoMap.repeat.set(10, 10);
-    displacementMap.repeat.set(10, 10);
-    diffuseMap.wrapS = diffuseMap.wrapT = THREE.RepeatWrapping;
-    normalMap.wrapS = normalMap.wrapT = THREE.RepeatWrapping;
-    roughnessMap.wrapS = roughnessMap.wrapT = THREE.RepeatWrapping;
-    aoMap.wrapS = aoMap.wrapT = THREE.RepeatWrapping;
-    displacementMap.wrapS = displacementMap.wrapT = THREE.RepeatWrapping;
-
-    const floorMaterial = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        map: diffuseMap,
-        normalMap: normalMap,
-        roughnessMap: roughnessMap,
-        aoMap: aoMap,
-        displacementMap: displacementMap,
-        displacementScale: 0.54, // Fixed displacement scale
-        displacementBias: -0.35 // Fixed displacement bias
-    });
-
-    floor = new THREE.Mesh(
-        new THREE.PlaneGeometry(35, 100, 100, 100),
-        floorMaterial
-    );
-    floor.geometry.attributes.uv2 = floor.geometry.attributes.uv;
-    floor.name = 'floor';
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    scene.add(floor);
-
     // Create volumetric fog plane
     createVolumetricFog();
 
-    // Add city buildings
-    createBuildings();
+
 
     // EVENTS
     window.addEventListener('resize', onWindowResize);
@@ -193,6 +129,20 @@ function init() {
 
     // DEMO
     loadModel();
+    const loader = new GLTFLoader();
+    loader.load('models/city3.glb', function (gltf) {
+        const model = gltf.scene;
+        model.position.set(0, 1, 0);
+        model.scale.set(0.01,0.01,0.01)
+        scene.add(model);
+
+        model.traverse(function (object) {
+            if (object.isMesh) {
+                object.castShadow = true;
+                object.receiveShadow = true;
+            }
+        });
+    });
 }
 
 function createVolumetricFog() {
@@ -386,106 +336,13 @@ function initPostProcessing() {
     );
 }
 
-function createBuildings() {
-    // Place buildings along the z-axis on both sides of the road (x = +/- 10-15 range), spanning the full floor length (z ≈ -50 to 50)
-    for (let i = -50; i <= 50; i += 6) { // Step of 6 units to cover the full 100-unit z-length with reasonable spacing (about 17 buildings per side)
-        // Random color for the building
-        const buildingColor = new THREE.Color().setHSL(Math.random(), 0.1, 0.4 + Math.random() * 0.2);
-
-        const buildingMaterial = new THREE.MeshStandardMaterial({
-            color: buildingColor,
-            roughness: 0.8,
-            metalness: 0.2
-        });
-
-        // Left side buildings (x: -10 to -15, within floor width of ±17.5)
-        const buildingLeft = new THREE.Group();
-        const widthLeft = Math.random() * 3 + 3; // Width 3-6
-        const heightLeft = Math.random() * 15 + 10; // Height 10-25
-        const depthLeft = Math.random() * 3 + 3; // Depth 3-6
-        const numStoriesLeft = Math.floor(Math.random() * 3) + 3; // 3-5 stories
-        let currentHeightLeft = 0;
-
-        for (let s = 0; s < numStoriesLeft; s++) {
-            const storyHeight = heightLeft / numStoriesLeft;
-            const storyWidth = widthLeft - s * 0.5; // Narrower as higher
-            const storyDepth = depthLeft - s * 0.5;
-            const story = new THREE.Mesh(
-                new THREE.BoxGeometry(storyWidth, storyHeight, storyDepth),
-                buildingMaterial
-            );
-            story.position.y = currentHeightLeft + storyHeight / 2;
-            story.castShadow = true;
-            story.receiveShadow = true;
-            buildingLeft.add(story);
-            currentHeightLeft += storyHeight;
-        }
-
-        // Add a roof
-        const roofLeft = new THREE.Mesh(
-            new THREE.BoxGeometry(widthLeft * 1.1, 1, depthLeft * 1.1),
-            new THREE.MeshStandardMaterial({ color: 0x505050, roughness: 0.8, metalness: 0.2 })
-        );
-        roofLeft.position.y = currentHeightLeft + 0.5;
-        roofLeft.castShadow = true;
-        roofLeft.receiveShadow = true;
-        buildingLeft.add(roofLeft);
-
-        buildingLeft.position.set(
-            - (10 + Math.random() * 5), // x: -10 to -15
-            0,
-            i + Math.random() * 2 - 1 // Slight offset in z
-        );
-        scene.add(buildingLeft);
-
-        // Right side buildings (x: 10 to 15, within floor width of ±17.5)
-        const buildingRight = new THREE.Group();
-        const widthRight = Math.random() * 3 + 3;
-        const heightRight = Math.random() * 15 + 10;
-        const depthRight = Math.random() * 3 + 3;
-        const numStoriesRight = Math.floor(Math.random() * 3) + 3; // 3-5 stories
-        let currentHeightRight = 0;
-
-        for (let s = 0; s < numStoriesRight; s++) {
-            const storyHeight = heightRight / numStoriesRight;
-            const storyWidth = widthRight - s * 0.5;
-            const storyDepth = depthRight - s * 0.5;
-            const story = new THREE.Mesh(
-                new THREE.BoxGeometry(storyWidth, storyHeight, storyDepth),
-                buildingMaterial
-            );
-            story.position.y = currentHeightRight + storyHeight / 2;
-            story.castShadow = true;
-            story.receiveShadow = true;
-            buildingRight.add(story);
-            currentHeightRight += storyHeight;
-        }
-
-        // Add a roof
-        const roofRight = new THREE.Mesh(
-            new THREE.BoxGeometry(widthRight * 1.1, 1, depthRight * 1.1),
-            new THREE.MeshStandardMaterial({ color: 0x505050, roughness: 0.8, metalness: 0.2 })
-        );
-        roofRight.position.y = currentHeightRight + 0.5;
-        roofRight.castShadow = true;
-        roofRight.receiveShadow = true;
-        buildingRight.add(roofRight);
-
-        buildingRight.position.set(
-            10 + Math.random() * 5, // x: 10 to 15
-            0,
-            i + Math.random() * 2 - 1
-        );
-        scene.add(buildingRight);
-    }
-}
-
 function loadModel() {
     const loader = new GLTFLoader();
     const path = "models/Soldier.glb";
     loader.load(path, function (gltf) {
         model = gltf.scene;
         group.add(model);
+        model.position.y = 0.8;
         model.rotation.y = PI;
         group.rotation.y = PI;
 
@@ -550,7 +407,7 @@ function updateCharacter(delta) {
         rotate.setFromAxisAngle(up, angle);
         controls.ease.applyAxisAngle(up, azimuth);
         position.add(ease);
-        camera.position.add(ease);
+        // camera.position.add(ease);
         group.position.copy(position);
         group.quaternion.rotateTowards(rotate, controls.rotateSpeed);
         orbitControls.target.copy(position).add({ x: 0, y: 1, z: 0 });
@@ -630,9 +487,9 @@ function setWeight(action, weight) {
 function onKeyDown(event) {
     const key = controls.key;
     switch (event.code) {
-        case 'ArrowUp': case 'KeyW': case 'KeyZ': key[0] = -1; break;
+        case 'ArrowUp': case 'KeyW': key[0] = -1; break;
         case 'ArrowDown': case 'KeyS': key[0] = 1; break;
-        case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[1] = -1; break;
+        case 'ArrowLeft': case 'KeyA': key[1] = -1; break;
         case 'ArrowRight': case 'KeyD': key[1] = 1; break;
         case 'ShiftLeft': case 'ShiftRight': key[2] = 1; break;
     }
@@ -641,9 +498,9 @@ function onKeyDown(event) {
 function onKeyUp(event) {
     const key = controls.key;
     switch (event.code) {
-        case 'ArrowUp': case 'KeyW': case 'KeyZ': key[0] = key[0] < 0 ? 0 : key[0]; break;
+        case 'ArrowUp': case 'KeyW': key[0] = key[0] < 0 ? 0 : key[0]; break;
         case 'ArrowDown': case 'KeyS': key[0] = key[0] > 0 ? 0 : key[0]; break;
-        case 'ArrowLeft': case 'KeyA': case 'KeyQ': key[1] = key[1] < 0 ? 0 : key[1]; break;
+        case 'ArrowLeft': case 'KeyA': key[1] = key[1] < 0 ? 0 : key[1]; break;
         case 'ArrowRight': case 'KeyD': key[1] = key[1] > 0 ? 0 : key[1]; break;
         case 'ShiftLeft': case 'ShiftRight': key[2] = 0; break;
     }
