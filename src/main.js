@@ -2,9 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GUI } from 'lil-gui';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { FlyControls } from 'three/examples/jsm/controls/FlyControls.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 
 let scene, renderer, camera, orbitControls, flyControls;
 let group, followGroup, model, skeleton, mixer, clock;
@@ -13,7 +12,8 @@ let actions;
 
 const settings = {
     show_skeleton: false,
-    control_mode: 'Orbit'
+    control_mode: 'Orbit',
+    tone_mapping: 'ACESFilmic' // Default tone mapping
 };
 
 const PI = Math.PI;
@@ -33,6 +33,15 @@ const controls = {
     floorDecale: 0,
 };
 
+// Available tone mapping options
+const toneMappingOptions = {
+    'NoToneMapping': THREE.NoToneMapping,
+    'Linear': THREE.LinearToneMapping,
+    'Reinhard': THREE.ReinhardToneMapping,
+    'Cineon': THREE.CineonToneMapping,
+    'ACESFilmic': THREE.ACESFilmicToneMapping
+};
+
 init();
 
 function init() {
@@ -46,8 +55,13 @@ function init() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x5e5d5d);
 
-    const environment = new RoomEnvironment();
-    scene.environment = environment;
+    // Load HDRI
+    const rgbeLoader = new RGBELoader();
+    rgbeLoader.load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/cape_hill_1k.hdr', function (texture) {
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+        scene.environment = texture;
+        scene.background = texture;
+    });
 
     group = new THREE.Group();
     scene.add(group);
@@ -55,11 +69,8 @@ function init() {
     followGroup = new THREE.Group();
     scene.add(followGroup);
 
-    // Lights
-    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(ambient);
-
-    const dirLight = new THREE.DirectionalLight(0xffffff, 5);
+    // Directional Light (only light source)
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
     dirLight.position.set(-2, 5, -3);
     dirLight.castShadow = true;
     const cam = dirLight.shadow.camera;
@@ -75,7 +86,7 @@ function init() {
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setAnimationLoop(animate);
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMapping = toneMappingOptions[settings.tone_mapping];
     renderer.toneMappingExposure = 0.5;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -98,7 +109,7 @@ function init() {
     const normalMap = textureLoader.load('textures/floor/aerial_rocks_02_nor_gl_1k.jpg');
     const roughnessMap = textureLoader.load('textures/floor/aerial_rocks_02_rough_1k.jpg');
     const aoMap = textureLoader.load('textures/floor/aerial_rocks_02_arm_1k.jpg');
-    const displacementMap = textureLoader.load('textures/floor/aerial_rocks_02_disp_1k.jpg'); // Fixed displacement map
+    const displacementMap = textureLoader.load('textures/floor/aerial_rocks_02_disp_1k.jpg');
 
     const floorMaterial = new THREE.MeshStandardMaterial({
         color: 0xffffff,
@@ -107,8 +118,8 @@ function init() {
         roughnessMap: roughnessMap,
         aoMap: aoMap,
         displacementMap: displacementMap,
-        displacementScale: 3.4, // Default value
-        displacementBias: -2 // Default value
+        displacementScale: 3.4,
+        displacementBias: -2
     });
 
     const floor = new THREE.Mesh(
@@ -181,28 +192,93 @@ function addRandomGeometries() {
     const boxAoMap = textureLoader.load('textures/box/aerial_rocks_04_arm_1k.jpg');
     const boxDisplacementMap = textureLoader.load('textures/box/aerial_rocks_04_disp_1k.jpg');
 
-    for (let i = 0; i < 10; i++) {
-        const size = Math.random() * 1;
-        const geometry = new THREE.IcosahedronGeometry(size, 32); // Removed invalid third parameter; detail=32 is very high-poly (reduce if performance issues)
-        const material = new THREE.MeshStandardMaterial({
-            color: 0xffffff,
-            map: boxDiffuseMap,
-            normalMap: boxNormalMap,
-            roughnessMap: boxRoughnessMap,
-            aoMap: boxAoMap,
-            displacementMap: boxDisplacementMap,
-            displacementScale: 1.5, // Default value
-            displacementBias: 0.3 // Default value
-        });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.geometry.attributes.uv2 = mesh.geometry.attributes.uv; // Required for aoMap
-        const yPos = size; // Corrected to rest on floor (icosahedron radius = size)
-        mesh.position.set(Math.random() * 40 - 20, yPos, Math.random() * 40 - 20);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        mesh.name = 'box' + i; // Name for GUI access
-        scene.add(mesh);
-    }
+    // Create a canvas to read displacement map pixels
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    let displacementImageData = null;
+
+    // Load displacement map synchronously to get pixel data
+    const img = new Image();
+    img.src = 'textures/floor/aerial_rocks_02_disp_1k.jpg';
+    img.onload = function() {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        context.drawImage(img, 0, 0);
+        displacementImageData = context.getImageData(0, 0, img.width, img.height);
+
+        // Add icosahedrons
+        const floor = scene.getObjectByName('floor');
+        const displacementScale = floor.material.displacementScale;
+        const displacementBias = floor.material.displacementBias;
+
+        for (let i = 0; i < 10; i++) {
+            const size = Math.random() * 0.5 + 1;
+            const geometry = new THREE.IcosahedronGeometry(size, 10);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                map: boxDiffuseMap,
+                normalMap: boxNormalMap,
+                roughnessMap: boxRoughnessMap,
+                aoMap: boxAoMap,
+                displacementMap: boxDisplacementMap,
+                displacementScale: 0.5,
+                displacementBias: 0.01,
+                side: THREE.DoubleSide,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.geometry.attributes.uv2 = mesh.geometry.attributes.uv;
+            const x = Math.random() * 40 - 20;
+            const z = Math.random() * 40 - 20;
+            const u = (x + 25) / 50;
+            const v = (z + 25) / 50;
+            const pixelX = Math.floor(u * displacementImageData.width);
+            const pixelY = Math.floor((1 - v) * displacementImageData.height);
+            const pixelIndex = (pixelY * displacementImageData.width + pixelX) * 4;
+            const displacementValue = displacementImageData.data[pixelIndex] / 255;
+            const floorHeight = displacementValue * displacementScale + displacementBias;
+            const yPos = size + floorHeight;
+            mesh.position.set(x, yPos, z);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.name = 'box' + i;
+            mesh.scale.set(0.8, 0.5, 0.6);
+            scene.add(mesh);
+        }
+    };
+}
+
+function updateRockPositions() {
+    const floor = scene.getObjectByName('floor');
+    const displacementScale = floor.material.displacementScale;
+    const displacementBias = floor.material.displacementBias;
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    const img = new Image();
+    img.src = 'textures/floor/aerial_rocks_02_disp_1k.jpg';
+    img.onload = function() {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        context.drawImage(img, 0, 0);
+        const displacementImageData = context.getImageData(0, 0, img.width, img.height);
+
+        for (let i = 0; i < 10; i++) {
+            const box = scene.getObjectByName('box' + i);
+            if (box) {
+                const size = box.geometry.parameters.radius;
+                const x = box.position.x;
+                const z = box.position.z;
+                const u = (x + 25) / 50;
+                const v = (z + 25) / 50;
+                const pixelX = Math.floor(u * displacementImageData.width);
+                const pixelY = Math.floor((1 - v) * displacementImageData.height);
+                const pixelIndex = (pixelY * displacementImageData.width + pixelX) * 4;
+                const displacementValue = displacementImageData.data[pixelIndex] / 255;
+                const floorHeight = displacementValue * displacementScale + displacementBias;
+                box.position.y = size + floorHeight;
+            }
+        }
+    };
 }
 
 function updateCharacter(delta) {
@@ -256,9 +332,7 @@ function unwrapRad(r) {
 }
 
 function createPanel() {
-    const panel = new GUI({ 
-        width: 300,
-     });
+    const panel = new GUI({ width: 300 });
 
     const generalFolder = panel.addFolder('General');
     generalFolder.add(settings, 'control_mode', ['Orbit', 'Fly']).onChange(mode => {
@@ -275,6 +349,10 @@ function createPanel() {
     generalFolder.add(settings, 'show_skeleton').onChange(b => {
         if (skeleton) skeleton.visible = b;
     });
+    generalFolder.add(settings, 'tone_mapping', Object.keys(toneMappingOptions)).onChange(value => {
+        renderer.toneMapping = toneMappingOptions[value];
+        renderer.compile(scene, camera); // Recompile to apply tone mapping
+    });
     generalFolder.add(renderer, 'toneMappingExposure', 0, 2, 0.01);
 
     const characterFolder = panel.addFolder('Character');
@@ -284,16 +362,10 @@ function createPanel() {
 
     const lightFolder = panel.addFolder('Lights');
 
-    const ambientLight = scene.getObjectByProperty('type', 'AmbientLight');
-    const ambientFolder = lightFolder.addFolder('Ambient Light');
-    ambientFolder.add(ambientLight, 'visible');
-    ambientFolder.add(ambientLight, 'intensity', 0, 5, 0.1);
-    ambientFolder.addColor(ambientLight, 'color');
-
     const dirLight = scene.getObjectByProperty('type', 'DirectionalLight');
     const dirFolder = lightFolder.addFolder('Directional Light');
     dirFolder.add(dirLight, 'visible');
-    dirFolder.add(dirLight, 'intensity', 0, 10, 0.1);
+    dirFolder.add(dirLight, 'intensity', 0, 5, 0.1);
     dirFolder.addColor(dirLight, 'color');
 
     const floor = scene.getObjectByName('floor');
@@ -303,52 +375,71 @@ function createPanel() {
     floorFolder.add(floor.material, 'metalness', 0, 1, 0.1);
     floorFolder.add(floor.material, 'roughness', 0, 1, 0.1);
     floorFolder.add(floor.material, 'wireframe');
-    floorFolder.add(floor.material, 'displacementScale', 0, 5, 0.01);
-    floorFolder.add(floor.material, 'displacementBias', -2, 2, 0.01);
+    floorFolder.add(floor.material, 'displacementScale', 0, 5, 0.01).onChange(v => {
+        floor.material.displacementScale = v;
+        floor.material.needsUpdate = true;
+        updateRockPositions();
+    });
+    floorFolder.add(floor.material, 'displacementBias', -2, 2, 0.01).onChange(v => {
+        floor.material.displacementBias = v;
+        floor.material.needsUpdate = true;
+        updateRockPositions();
+    });
 
-    // Box material controls (apply to all boxes/icosahedrons)
     const boxFolder = panel.addFolder('Boxes');
-    const boxMaterial = scene.getObjectByName('box0').material; // Use first box's material for GUI reference
+    const boxMaterial = scene.getObjectByName('box0') ? scene.getObjectByName('box0').material : new THREE.MeshStandardMaterial();
     boxFolder.addColor({ color: boxMaterial.color.getHex() }, 'color').onChange(v => {
         for (let i = 0; i < 10; i++) {
             const box = scene.getObjectByName('box' + i);
-            box.material.color.set(v);
-            box.material.needsUpdate = true;
+            if (box) {
+                box.material.color.set(v);
+                box.material.needsUpdate = true;
+            }
         }
     });
     boxFolder.add({ metalness: boxMaterial.metalness }, 'metalness', 0, 1, 0.1).onChange(v => {
         for (let i = 0; i < 10; i++) {
             const box = scene.getObjectByName('box' + i);
-            box.material.metalness = v;
-            box.material.needsUpdate = true;
+            if (box) {
+                box.material.metalness = v;
+                box.material.needsUpdate = true;
+            }
         }
     });
     boxFolder.add({ roughness: boxMaterial.roughness }, 'roughness', 0, 1, 0.1).onChange(v => {
         for (let i = 0; i < 10; i++) {
             const box = scene.getObjectByName('box' + i);
-            box.material.roughness = v;
-            box.material.needsUpdate = true;
+            if (box) {
+                box.material.roughness = v;
+                box.material.needsUpdate = true;
+            }
         }
     });
     boxFolder.add({ wireframe: boxMaterial.wireframe }, 'wireframe').onChange(v => {
         for (let i = 0; i < 10; i++) {
             const box = scene.getObjectByName('box' + i);
-            box.material.wireframe = v;
-            box.material.needsUpdate = true;
+            if (box) {
+                box.material.wireframe = v;
+                box.material.needsUpdate = true;
+            }
         }
     });
     boxFolder.add({ displacementScale: boxMaterial.displacementScale }, 'displacementScale', 0, 5, 0.01).onChange(v => {
         for (let i = 0; i < 10; i++) {
             const box = scene.getObjectByName('box' + i);
-            box.material.displacementScale = v;
-            box.material.needsUpdate = true;
+            if (box) {
+                box.material.displacementScale = v;
+                box.material.needsUpdate = true;
+            }
         }
     });
     boxFolder.add({ displacementBias: boxMaterial.displacementBias }, 'displacementBias', -2, 2, 0.01).onChange(v => {
         for (let i = 0; i < 10; i++) {
             const box = scene.getObjectByName('box' + i);
-            box.material.displacementBias = v;
-            box.material.needsUpdate = true;
+            if (box) {
+                box.material.displacementBias = v;
+                box.material.needsUpdate = true;
+            }
         }
     });
 }
