@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
 
 import { GUI } from 'lil-gui';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -22,7 +22,7 @@ const settings = {
     fog_height: 15,
     fog_noise: true,
     fog_speed: 0.5,
-    enable_postfx: false,
+    enable_postfx: true,
     pixel_ratio: 2.0,
     scanlines: true,
     film_grain: true,
@@ -61,6 +61,7 @@ function init() {
     const container = document.getElementById('container');
 
     camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.frustumCulled = true;
 
     clock = new THREE.Clock();
 
@@ -95,24 +96,24 @@ function init() {
     const cam = dirLight.shadow.camera;
     cam.top = cam.right = 2;
     cam.bottom = cam.left = -2;
+    cam.bottom = cam.left = -2;
     cam.near = 3;
     cam.far = 8;
-    dirLight.shadow.mapSize.set(1024, 1024);
-    followGroup.add(dirLight);
-    followGroup.add(dirLight.target);
-
+    dirLight.shadow.mapSize.set(512, 512);
     renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.BasicShadowMap;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.pixel_ratio));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setAnimationLoop(animate);
     renderer.toneMapping = toneMappingOptions[settings.tone_mapping];
     renderer.toneMappingExposure = 0.05;
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.BasicShadowMap;
     renderer.outputEncoding = THREE.sRGBEncoding;
     container.appendChild(renderer.domElement);
     renderer.compile(scene, camera);
-
+scene.add(dirLight);
     
 
     // Initialize post-processing
