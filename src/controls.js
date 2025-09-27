@@ -4,6 +4,8 @@ import { actions, mixer } from './model.js';
 import * as THREE from 'three';
 import { group, followGroup, camera } from './scene.js';
 
+let logCounter = 0;
+
 export function updateCharacter(delta) {
     const fade = controls.fadeDuration;
     const key = controls.key;
@@ -17,6 +19,7 @@ export function updateCharacter(delta) {
     const play = active ? (key[2] ? 'Run' : 'Walk') : 'Idle';
 
     if (controls.current != play) {
+        console.log(`Character state changed to: ${play}`);
         const current = actions[play];
         const old = actions[controls.current];
         controls.current = play;
@@ -38,11 +41,15 @@ export function updateCharacter(delta) {
         group.quaternion.rotateTowards(rotate, controls.rotateSpeed);
         followGroup.position.copy(position);
 
-        const offset = new THREE.Vector3(0, 2.3, -7);
+        if (logCounter % 60 === 0) {
+            console.log(`Character position: x: ${group.position.x.toFixed(2)}, y: ${group.position.y.toFixed(2)}, z: ${group.position.z.toFixed(2)}`);
+        }
+        logCounter++;
+
+        const offset = controls.cameraOffset;
         camera.position.copy(group.position).add(offset);
         camera.lookAt(group.position);
     }
-
     if (mixer) mixer.update(delta);
 }
 

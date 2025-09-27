@@ -14,6 +14,7 @@ let clock;
 export { clock };
 
 export function init() {
+    console.log('Initializing application...');
     const container = document.getElementById('container');
     clock = new THREE.Clock();
 

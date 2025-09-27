@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { scene, setRainGroup } from './scene.js';
 
 export function createRain() {
+    console.log('Creating rain...');
     const rainCount = 35000;
     const newRainGroup = new THREE.Group();
     newRainGroup.visible = false;

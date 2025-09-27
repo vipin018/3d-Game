@@ -26,6 +26,7 @@ export const controls = {
     walkVelocity: 1.8,
     rotateSpeed: 0.05,
     floorDecale: 0,
+    cameraOffset: new THREE.Vector3(0, 2.3, -7),
 };
 
 export const toneMappingOptions = {

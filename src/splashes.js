@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import { scene, splashPool, splashActive } from './scene.js';
 
+let splashLogCounter = 0;
+
 export function initSplashPool() {
     const splashCount = 100; // Number of splash effects to pool
     const splashGroup = new THREE.Group();
@@ -32,6 +34,10 @@ export function createSplash(x, z) {
             splash.material.opacity = 0.8;
             splash.scale.set(0.1, 0.1, 1);
             splashActive[i] = true;
+            if (splashLogCounter % 100 === 0) {
+                console.log('Creating splash');
+            }
+            splashLogCounter++;
             // Animate splash (will be updated in animate)
             break;
         }

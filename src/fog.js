@@ -4,6 +4,7 @@ import { settings } from './config.js';
 import { scene, setFogPlane, setFogUniforms } from './scene.js';
 
 export function createVolumetricFog() {
+    console.log('Creating volumetric fog...');
     // Create a box for volumetric fog effect to allow height variation
     const fogGeometry = new THREE.BoxGeometry(100, 20, 100);
     

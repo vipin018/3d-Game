@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
-import { group, scene } from './scene.js';
-import { settings, PI } from './config.js';
+import { group, scene, cityBoundingBox, setInitialCameraPosition } from './scene.js';
+import { settings, PI, controls } from './config.js';
 import { createPanel } from './gui.js';
 
 let model, skeleton, mixer;
 let actions;
 
 export function loadModel() {
+    console.log('Loading model...');
     const dracoLoader = new DRACOLoader();
     dracoLoader.setDecoderPath('three/examples/jsm/libs/draco/');
     const loader = new GLTFLoader();
@@ -17,7 +18,19 @@ export function loadModel() {
     loader.load(path, function (gltf) {
         model = gltf.scene;
         group.add(model);
-        model.position.y = 0.8;
+
+        if (cityBoundingBox) {
+            const randomX = THREE.MathUtils.randFloat(cityBoundingBox.min.x, cityBoundingBox.max.x);
+            const randomZ = THREE.MathUtils.randFloat(cityBoundingBox.min.z, cityBoundingBox.max.z);
+            group.position.set(randomX, 0.8, randomZ);
+            controls.position.copy(group.position);
+            setInitialCameraPosition(group.position);
+        } else {
+            group.position.set(-5.32, 0.8, 0.87);
+            controls.position.copy(group.position);
+            setInitialCameraPosition(group.position);
+        }
+
         model.rotation.y = PI;
         group.rotation.y = PI;
 
@@ -50,6 +63,7 @@ export function loadModel() {
         }
 
         actions.Idle.play();
+        console.log('Model loaded successfully.');
     });
 }
 export { model, skeleton, mixer, actions };

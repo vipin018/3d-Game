@@ -5,6 +5,7 @@ import { createRain } from './rain.js';
 import { createVolumetricFog } from './fog.js';
 
 export function onWeatherChange(value) {
+    console.log(`Weather changed to: ${value}`);
     switch (value) {
         case 'winter':
             settings.fog_density = 0.08;

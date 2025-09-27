@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
-import { settings, toneMappingOptions } from './config.js';
+import { settings, toneMappingOptions, controls } from './config.js';
 
 let scene, renderer, camera, group, followGroup;
 let floor;
@@ -11,7 +11,16 @@ let rainGroup;
 let splashPool = [];
 let splashActive = [];
 
-export { scene, renderer, camera, group, followGroup, floor, fogUniforms, fogPlane, rainGroup, splashPool, splashActive };
+let cityBoundingBox;
+
+export { scene, renderer, camera, group, followGroup, floor, fogUniforms, fogPlane, rainGroup, splashPool, splashActive, cityBoundingBox };
+
+export function setInitialCameraPosition(characterPosition) {
+    const offset = controls.cameraOffset;
+    camera.position.copy(characterPosition).add(offset);
+    camera.lookAt(characterPosition);
+}
+
 
 export function setRainGroup(newRainGroup) {
     rainGroup = newRainGroup;
@@ -33,6 +42,7 @@ export function setFloor(mesh) {
 
 
 export function initScene(container) {
+    console.log('Initializing scene...');
     camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.frustumCulled = true;
 
@@ -98,5 +108,8 @@ export function initScene(container) {
                 object.receiveShadow = true;
             }
         });
+
+        // Calculate and store the bounding box
+        cityBoundingBox = new THREE.Box3().setFromObject(model);
     });
 }
