@@ -7,6 +7,7 @@ import { onWeatherChange } from './weather.js';
 
 export function createPanel() {
     const panel = new GUI({ width: 300 });
+    panel.close();
 
     const generalFolder = panel.addFolder('General');
     generalFolder.add(settings, 'show_skeleton').onChange(b => {

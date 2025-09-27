@@ -22,21 +22,24 @@ export function initMinimap() {
         1,
         1000
     );
-    minimapCamera.up.set(0, 0, -1); // Set the camera's up direction
+    minimapCamera.position.set(0, 100, 0); // Position camera above the scene
+    minimapCamera.lookAt(0, 0, 0); // Look down at the center
     minimapScene.add(minimapCamera);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 10);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 15);
     minimapScene.add(ambientLight);
 
     // Create the character marker
-    const markerGeometry = new THREE.CylinderGeometry(1, 1, 5, 16);
-    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const markerGeometry = new THREE.CylinderGeometry(2, 2, 10, 16);
+    const markerMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
     characterMarker = new THREE.Mesh(markerGeometry, markerMaterial);
     minimapScene.add(characterMarker);
+    // characterMarker.scale.set(1.5,1.5,1.5)
 }
 
 export function setMinimapCity(cityModel) {
     const cityClone = cityModel.clone();
+    cityClone.rotation.y = Math.PI*2; // Rotate 180 degrees around Y-axis
     minimapScene.add(cityClone);
 }
 
@@ -44,7 +47,7 @@ export function updateMinimap(characterPosition) {
     if (characterMarker) {
         characterMarker.position.copy(characterPosition);
         minimapCamera.position.set(characterPosition.x, 100, characterPosition.z);
-        minimapCamera.lookAt(characterMarker.position);
+        minimapCamera.lookAt(characterPosition);
     }
 }
 

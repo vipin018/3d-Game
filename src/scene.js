@@ -55,10 +55,10 @@ export function initScene(container) {
 
     // Load HDRI
     const rgbeLoader = new RGBELoader();
-    rgbeLoader.load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/tiber_island_1k.hdr', function (texture) {
+    rgbeLoader.load('/hdri/environment.hdr', function (texture) {
         texture.mapping = THREE.EquirectangularReflectionMapping;
         scene.environment = texture;
-        // scene.background = texture;
+        scene.background = texture;
     });
 
     group = new THREE.Group();
@@ -72,8 +72,8 @@ export function initScene(container) {
     scene.add(ambLight);
 
     // Directional Light (only light source)
-    const dirLight = new THREE.DirectionalLight(0xffffff, 10);
-    dirLight.position.set(-2, 5, 3);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 5); // Reduced intensity
+    dirLight.position.set(2, 10, 5); // Positioned directly above for testing
     dirLight.castShadow = true;
     const cam = dirLight.shadow.camera;
     cam.top = cam.right = 2;
@@ -89,7 +89,7 @@ export function initScene(container) {
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setAnimationLoop(() => {}); // Will be set later
     renderer.toneMapping = toneMappingOptions[settings.tone_mapping];
-    renderer.toneMappingExposure = 0.1;
+    renderer.toneMappingExposure = 0.2;
     renderer.outputEncoding = THREE.sRGBEncoding;
     container.appendChild(renderer.domElement);
     renderer.compile(scene, camera);
@@ -112,6 +112,20 @@ export function initScene(container) {
 
         // Calculate and store the bounding box
         cityBoundingBox = new THREE.Box3().setFromObject(model);
+
+        // Adjust directional light shadow camera to fit the city
+        const citySize = cityBoundingBox.getSize(new THREE.Vector3());
+        const cityCenter = cityBoundingBox.getCenter(new THREE.Vector3());
+        dirLight.shadow.camera.left = -10; // Smaller frustum around the character
+        dirLight.shadow.camera.right = 10;
+        dirLight.shadow.camera.top = 10;
+        dirLight.shadow.camera.bottom = -10;
+        dirLight.shadow.camera.near = 0.5; // Near plane
+        dirLight.shadow.camera.far = 50; // Far plane
+        dirLight.shadow.camera.updateProjectionMatrix();
+        dirLight.target = group; // Make the light follow the character
+        scene.add(dirLight.target); // Add the target to the scene
+
         setMinimapCity(model);
     });
 }

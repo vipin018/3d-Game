@@ -28,7 +28,7 @@ export function loadModel() {
             setInitialCameraPosition(group.position);
             updateMinimap(group.position);
         } else {
-            group.position.set(-5.32, 0.8, 0.87);
+            group.position.set(-5.32, 0.9, 0.87);
             controls.position.copy(group.position);
             setInitialCameraPosition(group.position);
         }

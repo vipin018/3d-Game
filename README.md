@@ -1,7 +1,6 @@
-
 # 3D Soldier Animation Project
 
-This project is an interactive 3D application built with **Three.js** that showcases a soldier character in a dynamic city environment. The application features character animation, user controls, a weather system with volumetric fog and rain, and a third-person camera.
+This project is an interactive 3D application built with **Three.js** that showcases a soldier character in a dynamic city environment. The application features character animation, user controls, a weather system with volumetric fog and rain, a third-person camera, and a 3D minimap.
 
 ## Getting Started
 
@@ -40,6 +39,7 @@ To run this project locally, follow these steps:
 *   **Volumetric Fog:** Experience realistic, height-based volumetric fog that adds depth and atmosphere to the scene.
 *   **Rain and Splashes:** Watch as rain falls from the sky and creates splashes on the ground.
 *   **Third-Person Camera:** The camera follows the character as you navigate the environment.
+*   **3D Minimap:** A 3D minimap in the top-left corner displays a top-down view of the city and the character's real-time position.
 *   **GUI Controls:** A `lil-gui` panel allows you to tweak various settings in real-time.
 
 ## File Structure
@@ -66,6 +66,7 @@ The project is organized into several modules, each responsible for a specific p
 *   `events.js`: Sets up the event listeners for window resizing and keyboard input.
 *   `animate.js`: The main animation loop that updates the scene, character, and effects in every frame.
 *   `window-resize.js`: Handles the resizing of the browser window.
+*   `minimap.js`: Manages the 3D minimap feature.
 
 ## How It Works
 
@@ -98,6 +99,16 @@ The third-person camera is programmed to follow the character in `src/controls.j
 2.  **Camera Offset:** An `offset` vector is defined to specify the camera's position relative to the character (behind and slightly above).
 3.  **Camera Position Update:** In the `updateCharacter` function, the camera's position is set by adding the `offset` to the character's position.
 4.  **`lookAt`:** The camera is made to always look at the character's position, ensuring that the character is always in the center of the view.
+
+### 3D Minimap
+
+The 3D minimap is a more advanced feature that provides a real-time, top-down view of the city and the character's position. It is managed by `src/minimap.js`.
+
+1.  **Second Scene:** A second `THREE.Scene` (`minimapScene`) is created exclusively for the minimap.
+2.  **Orthographic Camera:** An `THREE.OrthographicCamera` (`minimapCamera`) is used to get a top-down, 2D-like view of the `minimapScene`.
+3.  **Cloned City:** To avoid loading the city model twice, the city model from the main scene is cloned and added to the `minimapScene`.
+4.  **Character Marker:** A simple red cylinder (`characterMarker`) is used to represent the character on the minimap. Its position is synchronized with the main character's position.
+5.  **Viewport Rendering:** The `renderMinimap` function uses `renderer.setViewport` and `renderer.setScissor` to render the `minimapScene` onto a small rectangular area in the top-left corner of the main canvas. This is done in the `animate` loop after the main scene has been rendered.
 
 ### Volumetric Fog
 
