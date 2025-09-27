@@ -4,6 +4,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { group, scene, cityBoundingBox, setInitialCameraPosition } from './scene.js';
 import { settings, PI, controls } from './config.js';
 import { createPanel } from './gui.js';
+import { updateMinimap } from './minimap.js';
 
 let model, skeleton, mixer;
 let actions;
@@ -25,6 +26,7 @@ export function loadModel() {
             group.position.set(randomX, 0.8, randomZ);
             controls.position.copy(group.position);
             setInitialCameraPosition(group.position);
+            updateMinimap(group.position);
         } else {
             group.position.set(-5.32, 0.8, 0.87);
             controls.position.copy(group.position);

@@ -3,10 +3,12 @@ import { controls } from './config.js';
 import { actions, mixer } from './model.js';
 import * as THREE from 'three';
 import { group, followGroup, camera } from './scene.js';
+import { updateMinimap } from './minimap.js';
 
 let logCounter = 0;
 
 export function updateCharacter(delta) {
+    if (!actions) return; // Don't update if actions are not yet loaded
     const fade = controls.fadeDuration;
     const key = controls.key;
     const up = controls.up;
@@ -50,6 +52,7 @@ export function updateCharacter(delta) {
         camera.position.copy(group.position).add(offset);
         camera.lookAt(group.position);
     }
+    updateMinimap(group.position);
     if (mixer) mixer.update(delta);
 }
 

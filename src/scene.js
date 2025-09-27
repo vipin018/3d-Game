@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { settings, toneMappingOptions, controls } from './config.js';
+import { setMinimapCity } from './minimap.js';
 
 let scene, renderer, camera, group, followGroup;
 let floor;
@@ -111,5 +112,6 @@ export function initScene(container) {
 
         // Calculate and store the bounding box
         cityBoundingBox = new THREE.Box3().setFromObject(model);
+        setMinimapCity(model);
     });
 }

@@ -5,6 +5,7 @@ import { fogUniforms, rainGroup } from './scene.js';
 import { createSplash, updateSplashes } from './splashes.js';
 import { updateCharacter } from './controls.js';
 import { renderer, camera, scene } from './scene.js';
+import { renderMinimap } from './minimap.js';
 
 export function animate() {
     const delta = clock.getDelta();
@@ -37,5 +38,11 @@ export function animate() {
     
     updateCharacter(delta);
     
+    // Render main scene
+    renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+    renderer.setScissor(0, 0, window.innerWidth, window.innerHeight);
     renderer.render(scene, camera);
+    
+    // Render minimap
+    renderMinimap();
 }

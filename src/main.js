@@ -9,6 +9,8 @@ import { initEvents } from './events.js';
 import { animate } from './animate.js';
 import { renderer } from './scene.js';
 
+import { initMinimap } from './minimap.js';
+
 let clock;
 
 export { clock };
@@ -25,6 +27,7 @@ export function init() {
     initWeather();
     loadModel();
     initEvents();
+    initMinimap();
 
     // Set animation loop
     renderer.setAnimationLoop(animate);
