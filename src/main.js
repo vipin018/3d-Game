@@ -1,7 +1,4 @@
 import * as THREE from 'three';
-
-
-
 import { GUI } from 'lil-gui';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
@@ -10,23 +7,22 @@ import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 let scene, renderer, camera;
 let group, followGroup, model, skeleton, mixer, clock;
 let floor; // Global reference to floor mesh for texture updates
-let fogUniforms, fogPlane, postProcessing = {};
+let fogUniforms, fogPlane;
+let rainGroup;
+let splashPool = []; // Pool for splash effects
+let splashActive = []; // Track active splashes
 
 let actions;
 
 const settings = {
     show_skeleton: false,
     tone_mapping: 'ACESFilmic',
-    fog_density: 0.03,
-    fog_color: '#212631',
-    fog_height: 15,
+    fog_density: 0,
+    fog_color: '#bfbfc0',
+    fog_height: 20,
     fog_noise: true,
     fog_speed: 0.5,
-    enable_postfx: true,
-    pixel_ratio: 2.0,
-    scanlines: true,
-    film_grain: true,
-    bloom: true
+    weather: 'autumn'
 };
 
 const PI = Math.PI;
@@ -73,7 +69,7 @@ function init() {
 
     // Load HDRI
     const rgbeLoader = new RGBELoader();
-    rgbeLoader.load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/autumn_field_puresky_1k.hdr', function (texture) {
+    rgbeLoader.load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/tiber_island_1k.hdr', function (texture) {
         texture.mapping = THREE.EquirectangularReflectionMapping;
         scene.environment = texture;
         // scene.background = texture;
@@ -103,26 +99,32 @@ function init() {
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.BasicShadowMap;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.pixel_ratio));
+    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setAnimationLoop(animate);
     renderer.toneMapping = toneMappingOptions[settings.tone_mapping];
-    renderer.toneMappingExposure = 0.05;
+    renderer.toneMappingExposure = 0.1;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.BasicShadowMap;
     renderer.outputEncoding = THREE.sRGBEncoding;
     container.appendChild(renderer.domElement);
     renderer.compile(scene, camera);
-scene.add(dirLight);
-    
+    scene.add(dirLight);
 
-    // Initialize post-processing
-    initPostProcessing();
+    // Create ground floor for splashes
+    createFloor();
 
     // Create volumetric fog plane
     createVolumetricFog();
 
+    // Create rain system
+    createRain();
 
+    // Initialize splash pool
+    initSplashPool();
+
+    // Apply default weather
+    onWeatherChange(settings.weather);
 
     // EVENTS
     window.addEventListener('resize', onWindowResize);
@@ -147,9 +149,72 @@ scene.add(dirLight);
     });
 }
 
+function createFloor() {
+    const geometry = new THREE.PlaneGeometry(200, 200);
+    const material = new THREE.MeshLambertMaterial({ color: 0x333333 });
+    floor = new THREE.Mesh(geometry, material);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = 0;
+    floor.receiveShadow = true;
+    scene.add(floor);
+}
+
+function initSplashPool() {
+    const splashCount = 100; // Number of splash effects to pool
+    const splashGroup = new THREE.Group();
+    scene.add(splashGroup);
+
+    for (let i = 0; i < splashCount; i++) {
+        const geometry = new THREE.CircleGeometry(0.1, 8); // Small circle for splash
+        const material = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0
+        });
+        const splash = new THREE.Mesh(geometry, material);
+        splash.rotation.x = -Math.PI / 2;
+        splash.scale.set(0, 0, 1);
+        splashGroup.add(splash);
+        splashPool.push(splash);
+        splashActive.push(false);
+    }
+}
+
+function createSplash(x, z) {
+    // Find an inactive splash
+    for (let i = 0; i < splashPool.length; i++) {
+        if (!splashActive[i]) {
+            const splash = splashPool[i];
+            splash.position.set(x, 0.01, z); // Slightly above ground
+            splash.material.opacity = 0.8;
+            splash.scale.set(0.1, 0.1, 1);
+            splashActive[i] = true;
+            // Animate splash (will be updated in animate)
+            break;
+        }
+    }
+}
+
+function updateSplashes(delta) {
+    for (let i = 0; i < splashPool.length; i++) {
+        if (splashActive[i]) {
+            const splash = splashPool[i];
+            // Expand and fade out
+            splash.scale.multiplyScalar(1.1 + Math.random() * 0.2);
+            splash.material.opacity -= delta * 3; // Fade quickly
+
+            if (splash.material.opacity <= 0 || splash.scale.x > 1) {
+                splashActive[i] = false;
+                splash.material.opacity = 0;
+                splash.scale.set(0.1, 0.1, 1);
+            }
+        }
+    }
+}
+
 function createVolumetricFog() {
-    // Create a large plane for volumetric fog effect
-    const fogGeometry = new THREE.PlaneGeometry(100, 100, 1, 1);
+    // Create a box for volumetric fog effect to allow height variation
+    const fogGeometry = new THREE.BoxGeometry(100, 20, 100);
     
     const fogMaterial = new THREE.ShaderMaterial({
         uniforms: {
@@ -163,10 +228,11 @@ function createVolumetricFog() {
         },
         vertexShader: `
             varying vec2 vUv;
-            varying vec3 vPosition;
+            varying vec3 vWorldPosition;
             void main() {
                 vUv = uv;
-                vPosition = position;
+                vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                vWorldPosition = worldPos.xyz;
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
             }
         `,
@@ -180,42 +246,42 @@ function createVolumetricFog() {
             uniform float fogSpeed;
             
             varying vec2 vUv;
-            varying vec3 vPosition;
+            varying vec3 vWorldPosition;
             
-            // Simple noise function
-            float hash(vec2 p) {
-                return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+            // Simple 3D noise function
+            float hash(vec3 p) {
+                p = fract(p * 0.3183099 + .1);
+                return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
             }
             
-            float noise(vec2 p) {
-                vec2 i = floor(p);
-                vec2 f = fract(p);
+            float noise(vec3 p) {
+                vec3 i = floor(p);
+                vec3 f = fract(p);
                 f = f * f * (3.0 - 2.0 * f);
                 
-                float a = hash(i);
-                float b = hash(i + vec2(1.0, 0.0));
-                float c = hash(i + vec2(0.0, 1.0));
-                float d = hash(i + vec2(1.0, 1.0));
-                
-                return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+                return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+                               mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                           mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                               mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
             }
             
             void main() {
-                // Height-based fog density
-                float heightFactor = 1.0 - clamp(vPosition.y / fogHeight, 0.0, 1.0);
+                // Height-based fog density (higher density at bottom)
+                float localY = max(vWorldPosition.y, 0.0);
+                float heightFactor = 1.0 - clamp(localY / fogHeight, 0.0, 1.0);
                 float baseDensity = fogDensity * heightFactor;
                 
-                // Add noise for volumetric effect
+                // Add animated 3D noise for volumetric effect and movement
                 float noiseFactor = 1.0;
                 if (enableNoise) {
-                    vec2 uv = vUv * 5.0 + time * fogSpeed * 0.1;
-                    noiseFactor = noise(uv) * 0.5 + 0.5;
+                    vec3 noisePos = vWorldPosition * 0.05 + vec3(time * fogSpeed, 0.0, 0.0);
+                    noiseFactor = noise(noisePos) * 0.5 + 0.5;
                 }
                 
                 float finalDensity = baseDensity * noiseFactor;
                 
                 // Distance from camera (simplified)
-                float dist = length(vPosition - cameraPosition) * 0.1;
+                float dist = length(vWorldPosition - cameraPosition) * 0.01;
                 float fogFactor = exp(-finalDensity * dist);
                 fogFactor = 1.0 - clamp(fogFactor, 0.0, 1.0);
                 
@@ -224,118 +290,72 @@ function createVolumetricFog() {
         `,
         transparent: true,
         depthWrite: false,
-        blending: THREE.NormalBlending
+        blending: THREE.NormalBlending,
+        side: THREE.DoubleSide
     });
 
     fogPlane = new THREE.Mesh(fogGeometry, fogMaterial);
-    fogPlane.rotation.x = -Math.PI / 2;
-    fogPlane.position.y = 0.1; // Slightly above ground
+    fogPlane.position.y = 10; // Center the box at y=10 (bottom at y=0, top at y=20)
     scene.add(fogPlane);
     
     fogUniforms = fogMaterial.uniforms;
 }
 
-function initPostProcessing() {
-    // Create a simple post-processing shader pass
-    postProcessing.scene = new THREE.Scene();
-    postProcessing.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    
-    const postMaterial = new THREE.ShaderMaterial({
-        uniforms: {
-            tDiffuse: { value: null },
-            time: { value: 0 },
-            resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-            pixelRatio: { value: settings.pixel_ratio },
-            scanlines: { value: settings.scanlines },
-            film_grain: { value: settings.film_grain },
-            grainIntensity: { value: 0.1 },
-            bloom: { value: settings.bloom },
-            bloomIntensity: { value: 0.3 }
-        },
-        vertexShader: `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: `
-            uniform sampler2D tDiffuse;
-            uniform float time;
-            uniform vec2 resolution;
-            uniform float pixelRatio;
-            uniform bool scanlines;
-            uniform bool filmGrain;
-            uniform float grainIntensity;
-            uniform bool bloom;
-            uniform float bloomIntensity;
-            
-            varying vec2 vUv;
-            
-            // Film grain noise
-            float grain(vec2 uv) {
-                return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
-            }
+function createRain() {
+    const rainCount = 35000;
+    rainGroup = new THREE.Group();
+    rainGroup.visible = false;
 
-            vec3 bloomEffect(vec3 color) {
-                if (!bloom) return color;
-                
-                // Simple brightness threshold and blur
-                float brightness = dot(color, vec3(0.2126, 0.7152, 0.0722));
-                if (brightness > 0.7) {
-                    color += color * bloomIntensity;
-                }
-                return color;
-            }
-            
-            void main() {
-                vec2 uv = vUv;
-                vec4 color = texture2D(tDiffuse, uv);
-                
-                // Scanlines effect
-                if (scanlines) {
-                    float scanline = sin(uv.y * resolution.y * 3.14159 * 2.0) * 0.1 + 0.9;
-                    color.rgb *= scanline;
-                }
-                
-                // Film grain
-                if (filmGrain) {
-                    float grainValue = grain(uv + time) * grainIntensity;
-                    color.rgb += grainValue - grainIntensity * 0.5;
-                }
+    for (let i = 0; i < rainCount; i++) {
+        const points = [
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0, -0.3, 0)
+        ];
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = new THREE.LineBasicMaterial({
+            color: 0xffffff, // Explicit white
+            transparent: true,
+            opacity: 0.9
+        });
+        const line = new THREE.Line(geometry, material);
+        line.position.x = (Math.random() - 0.5) * 200;
+        line.position.y = Math.random() * 60 + 20;
+        line.position.z = (Math.random() - 0.5) * 200;
+        rainGroup.add(line);
+    }
 
-                // Bloom effect
-                color.rgb = bloomEffect(color.rgb);
-                
-                // Pixelation effect based on pixel ratio
-                if (pixelRatio < 1.0) {
-                    vec2 pixelSize = 1.0 / resolution;
-                    vec2 dxy = pixelSize * pixelRatio;
-                    vec2 coord = dxy * floor(uv / dxy);
-                    color = texture2D(tDiffuse, coord);
-                }
-                
-                gl_FragColor = color;
+    scene.add(rainGroup);
+}
+
+function onWeatherChange(value) {
+    switch (value) {
+        case 'winter':
+            settings.fog_density = 0.08;
+            settings.fog_noise = true;
+            scene.fog.density = settings.fog_density;
+            if (fogUniforms) {
+                fogUniforms.fogDensity.value = settings.fog_density;
+                fogUniforms.enableNoise.value = settings.fog_noise;
             }
-        `
-    });
-    
-    postProcessing.plane = new THREE.PlaneGeometry(2, 2);
-    postProcessing.quad = new THREE.Mesh(postProcessing.plane, postMaterial);
-    postProcessing.scene.add(postProcessing.quad);
-    
-    postProcessing.uniforms = postMaterial.uniforms;
-    
-    // Create render target for post-processing
-    postProcessing.rt = new THREE.WebGLRenderTarget(
-        window.innerWidth, 
-        window.innerHeight,
-        {
-            minFilter: THREE.LinearFilter,
-            magFilter: THREE.LinearFilter,
-            format: THREE.RGBAFormat
-        }
-    );
+            if (rainGroup) rainGroup.visible = false;
+            break;
+        case 'rain':
+            settings.fog_density = 0;
+            scene.fog.density = settings.fog_density;
+            if (fogUniforms) {
+                fogUniforms.fogDensity.value = settings.fog_density;
+            }
+            if (rainGroup) rainGroup.visible = true;
+            break;
+        case 'autumn':
+            settings.fog_density = 0;
+            scene.fog.density = settings.fog_density;
+            if (fogUniforms) {
+                fogUniforms.fogDensity.value = settings.fog_density;
+            }
+            if (rainGroup) rainGroup.visible = false;
+            break;
+    }
 }
 
 function loadModel() {
@@ -442,42 +462,9 @@ function createPanel() {
     });
     generalFolder.add(renderer, 'toneMappingExposure', 0, 2, 0.01);
 
-    const fogFolder = panel.addFolder('Fog Settings');
-    fogFolder.add(settings, 'fog_density', 0, 0.1, 0.001).onChange(value => {
-        scene.fog.density = value;
-        if (fogUniforms) fogUniforms.fogDensity.value = value;
-    });
-    fogFolder.addColor(settings, 'fog_color').onChange(value => {
-        scene.fog.color = new THREE.Color(value);
-        if (fogUniforms) fogUniforms.fogColor.value = new THREE.Color(value);
-    });
-    fogFolder.add(settings, 'fog_height', 1, 50, 1).onChange(value => {
-        if (fogUniforms) fogUniforms.fogHeight.value = value;
-    });
-    fogFolder.add(settings, 'fog_noise').onChange(value => {
-        if (fogUniforms) fogUniforms.enableNoise.value = value;
-    });
-    fogFolder.add(settings, 'fog_speed', 0, 2, 0.1).onChange(value => {
-        if (fogUniforms) fogUniforms.fogSpeed.value = value;
-    });
+    const weatherFolder = panel.addFolder('Weather');
+    weatherFolder.add(settings, 'weather', ['winter', 'rain', 'autumn']).onChange(onWeatherChange);
 
-    const postFxFolder = panel.addFolder('Post Processing');
-    postFxFolder.add(settings, 'enable_postfx');
-    postFxFolder.add(settings, 'pixel_ratio', 0.5, 3, 0.1).onChange(value => {
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, value));
-        if (postProcessing.uniforms) postProcessing.uniforms.pixelRatio.value = value;
-    });
-    postFxFolder.add(settings, 'scanlines').onChange(value => {
-        if (postProcessing.uniforms) postProcessing.uniforms.scanlines.value = value;
-    });
-    postFxFolder.add(settings, 'film_grain').onChange(value => {
-        if (postProcessing.uniforms) postProcessing.uniforms.filmGrain.value = value;
-    });
-    postFxFolder.add(settings, 'bloom').onChange(value => {
-        if (postProcessing.uniforms) postProcessing.uniforms.bloom.value = value;
-    });
-    postFxFolder.add(postProcessing.uniforms.grainIntensity, 'value', 0, 0.2, 0.01).name('Grain Intensity');
-    postFxFolder.add(postProcessing.uniforms.bloomIntensity, 'value', 0, 1, 0.01).name('Bloom Intensity');
 
     const characterFolder = panel.addFolder('Character');
     characterFolder.add(controls, 'runVelocity', 0, 10, 0.1);
@@ -517,11 +504,6 @@ function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    
-    if (postProcessing.rt) {
-        postProcessing.rt.setSize(window.innerWidth, window.innerHeight);
-        postProcessing.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
-    }
 }
 
 function animate() {
@@ -533,26 +515,27 @@ function animate() {
         fogUniforms.time.value = time;
         fogUniforms.cameraPosition.value.copy(camera.position);
     }
-    
-    if (postProcessing.uniforms) {
-        postProcessing.uniforms.time.value = time;
+
+    // Animate rain if visible
+    if (rainGroup && rainGroup.visible) {
+        const fallSpeed = 0.6 + Math.random() * 0.2;
+        rainGroup.children.forEach(line => {
+            line.position.y -= fallSpeed;
+            if (line.position.y < 0) {
+                // Create splash at impact position
+                createSplash(line.position.x, line.position.z);
+                // Reset drop
+                line.position.y = 60 + Math.random() * 20;
+                line.position.x = (Math.random() - 0.5) * 200;
+                line.position.z = (Math.random() - 0.5) * 200;
+            }
+        });
     }
+
+    // Update splashes
+    updateSplashes(delta);
     
     updateCharacter(delta);
     
-    // Render with or without post-processing
-    if (settings.enable_postfx) {
-        // First pass: render scene to render target
-        renderer.setRenderTarget(postProcessing.rt);
-        renderer.render(scene, camera);
-        
-        // Second pass: render post-processing quad to screen
-        renderer.setRenderTarget(null);
-        postProcessing.uniforms.tDiffuse.value = postProcessing.rt.texture;
-        renderer.render(postProcessing.scene, postProcessing.camera);
-    } else {
-        // Direct rendering without post-processing
-        renderer.setRenderTarget(null);
-        renderer.render(scene, camera);
-    }
+    renderer.render(scene, camera);
 }
