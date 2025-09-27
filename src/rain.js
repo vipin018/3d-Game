@@ -8,23 +8,29 @@ export function createRain() {
     const newRainGroup = new THREE.Group();
     newRainGroup.visible = false;
 
+    const positions = new Float32Array(rainCount * 3);
+    const velocities = new Float32Array(rainCount);
+
     for (let i = 0; i < rainCount; i++) {
-        const points = [
-            new THREE.Vector3(0, 0, 0),
-            new THREE.Vector3(0, -0.3, 0)
-        ];
-        const geometry = new THREE.BufferGeometry().setFromPoints(points);
-        const material = new THREE.LineBasicMaterial({
-            color: 0xffffff, // Explicit white
-            transparent: true,
-            opacity: 0.9
-        });
-        const line = new THREE.Line(geometry, material);
-        line.position.x = (Math.random() - 0.5) * 200;
-        line.position.y = Math.random() * 60 + 20;
-        line.position.z = (Math.random() - 0.5) * 200;
-        newRainGroup.add(line);
+        positions[i * 3] = (Math.random() - 0.5) * 200;
+        positions[i * 3 + 1] = Math.random() * 60 + 20;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 200;
+        velocities[i] = 0.6 + Math.random() * 0.2;
     }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 1));
+
+    const material = new THREE.PointsMaterial({
+        color: 0xffffff,
+        size: 0.1,
+        transparent: true,
+        opacity: 0.9,
+    });
+
+    const rain = new THREE.Points(geometry, material);
+    newRainGroup.add(rain);
 
     setRainGroup(newRainGroup);
     scene.add(newRainGroup);

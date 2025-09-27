@@ -19,18 +19,20 @@ export function animate() {
 
     // Animate rain if visible
     if (rainGroup && rainGroup.visible) {
-        const fallSpeed = 0.6 + Math.random() * 0.2;
-        rainGroup.children.forEach(line => {
-            line.position.y -= fallSpeed;
-            if (line.position.y < 0) {
+        const rain = rainGroup.children[0];
+        const positions = rain.geometry.attributes.position.array;
+        const velocities = rain.geometry.attributes.velocity.array;
+
+        for (let i = 0; i < positions.length; i += 3) {
+            positions[i + 1] -= velocities[i / 3];
+            if (positions[i + 1] < 0) {
                 // Create splash at impact position
-                createSplash(line.position.x, line.position.z);
+                createSplash(positions[i], positions[i + 2]);
                 // Reset drop
-                line.position.y = 60 + Math.random() * 20;
-                line.position.x = (Math.random() - 0.5) * 200;
-                line.position.z = (Math.random() - 0.5) * 200;
+                positions[i + 1] = 60 + Math.random() * 20;
             }
-        });
+        }
+        rain.geometry.attributes.position.needsUpdate = true;
     }
 
     // Update splashes
